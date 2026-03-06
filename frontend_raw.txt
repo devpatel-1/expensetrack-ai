@@ -1,0 +1,249 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ExpenseTrack AI</title>
+    <style>
+        :root {
+            --primary-color: #4CAF50;
+            --secondary-color: #f2f2f2;
+            --error-color: #f44336;
+            --text-color: #333;
+            --font-family: Arial, sans-serif;
+        }
+        body {
+            font-family: var(--font-family);
+            margin: 0;
+            padding: 20px;
+            background-color: var(--secondary-color);
+        }
+        h1 {
+            color: var(--primary-color);
+        }
+        form {
+            margin-bottom: 20px;
+            padding: 20px;
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:disabled {
+            background-color: #ccc;
+        }
+        .error {
+            color: var(--error-color);
+        }
+        .loading {
+            display: none;
+        }
+        .loading.active {
+            display: block;
+        }
+        #expense-list {
+            margin-top: 20px;
+        }
+        #chart {
+            margin-top: 20px;
+            height: 400px;
+        }
+    </style>
+</head>
+<body>
+
+<h1>ExpenseTrack AI</h1>
+
+<div id="registration">
+    <h2>Register</h2>
+    <form id="register-form">
+        <input type="text" id="register-username" placeholder="Username" required>
+        <input type="password" id="register-password" placeholder="Password" required>
+        <button type="submit">Register</button>
+    </form>
+    <div class="error" id="register-error"></div>
+</div>
+
+<div id="login">
+    <h2>Login</h2>
+    <form id="login-form">
+        <input type="text" id="login-username" placeholder="Username" required>
+        <input type="password" id="login-password" placeholder="Password" required>
+        <button type="submit">Login</button>
+    </form>
+    <div class="error" id="login-error"></div>
+</div>
+
+<div id="expense-logging" style="display:none;">
+    <h2>Log Expense</h2>
+    <form id="expense-form">
+        <input type="number" id="expense-amount" placeholder="Amount" required>
+        <input type="text" id="expense-description" placeholder="Description" required>
+        <button type="submit">Log Expense</button>
+    </form>
+    <div class="error" id="expense-error"></div>
+</div>
+
+<div id="expense-list"></div>
+<div id="chart"></div>
+<div class="loading" id="loading">Loading...</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    const loadingElement = document.getElementById('loading');
+    const registerError = document.getElementById('register-error');
+    const loginError = document.getElementById('login-error');
+    const expenseError = document.getElementById('expense-error');
+    const expenseList = document.getElementById('expense-list');
+    const expenseLogging = document.getElementById('expense-logging');
+    let userId = null;
+
+    function showLoading() {
+        loadingElement.classList.add('active');
+    }
+
+    function hideLoading() {
+        loadingElement.classList.remove('active');
+    }
+
+    async function fetchAPI(url, options) {
+        showLoading();
+        try {
+            const response = await fetch(url, options);
+            if (!response.ok) throw new Error(await response.text());
+            return await response.json();
+        } catch (error) {
+            throw error;
+        } finally {
+            hideLoading();
+        }
+    }
+
+    document.getElementById('register-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        registerError.textContent = '';
+        const username = document.getElementById('register-username').value;
+        const password = document.getElementById('register-password').value;
+
+        try {
+            await fetchAPI('/api/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            alert('Registration successful! Please log in.');
+        } catch (error) {
+            registerError.textContent = error.message;
+        }
+    });
+
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        loginError.textContent = '';
+        const username = document.getElementById('login-username').value;
+        const password = document.getElementById('login-password').value;
+
+        try {
+            const data = await fetchAPI('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            alert(data.message);
+            userId = data.userId; // Assuming userId is returned
+            expenseLogging.style.display = 'block';
+            loadExpenses();
+        } catch (error) {
+            loginError.textContent = error.message;
+        }
+    });
+
+    document.getElementById('expense-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        expenseError.textContent = '';
+        const amount = parseFloat(document.getElementById('expense-amount').value);
+        const description = document.getElementById('expense-description').value;
+
+        try {
+            await fetchAPI('/api/expenses', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount, description, user_id: userId })
+            });
+            alert('Expense logged successfully!');
+            loadExpenses();
+        } catch (error) {
+            expenseError.textContent = error.message;
+        }
+    });
+
+    async function loadExpenses() {
+        try {
+            const expenses = await fetchAPI(`/api/expenses?user_id=${userId}`, {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            displayExpenses(expenses);
+        } catch (error) {
+            expenseList.innerHTML = `<div class="error">${error.message}</div>`;
+        }
+    }
+
+    function displayExpenses(expenses) {
+        expenseList.innerHTML = '<h3>Logged Expenses</h3>';
+        expenses.forEach(expense => {
+            expenseList.innerHTML += `<div>${expense.description}: $${expense.amount}</div>`;
+        });
+        createChart(expenses);
+    }
+
+    function createChart(expenses) {
+        const ctx = document.createElement('canvas');
+        ctx.id = 'spending-chart';
+        document.getElementById('chart').innerHTML = '';
+        document.getElementById('chart').appendChild(ctx);
+
+        const labels = expenses.map(exp => exp.description);
+        const data = expenses.map(exp => exp.amount);
+
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Expenses',
+                    data: data,
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+</script>
+
+</body>
+</html>
+```
