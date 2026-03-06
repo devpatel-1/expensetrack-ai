@@ -1,0 +1,84 @@
+
+═══════════════════════════════════
+🔬 AUTOMATED TEST RESULTS
+═══════════════════════════════════
+
+Automated Test Results:
+- Syntax Check: ❌ Failed
+- Import Check: ❌ Failed
+- Run Check:    ❌ Failed
+- Overall:      ❌ Some Failed
+
+
+Reference Docs:
+No results found.
+
+
+═══════════════════════════════════
+🤖 AI CODE REVIEW
+═══════════════════════════════════
+Bugs Found:
+1. In the `log_expense` function (main.py, line 45), the `user_id` parameter is not being passed in the request body. It should be extracted from the request context or passed as a query parameter. This will lead to a `TypeError` since `user_id` will be `None`.
+2. In the `get_expenses` function (main.py, line 56), the `user_id` is expected as a query parameter but is not defined in the function signature. This will result in a `TypeError` when the function is called.
+
+Security Issues:
+1. The passwords are stored in plain text in the database (models.py, line 10). This is a significant security risk. Passwords should be hashed before storage using a library like `bcrypt`.
+
+Improvements:
+1. Implement input validation for the `amount` field in the `ExpenseCreate` model (main.py, line 20) to ensure it is a positive number. This can be done by adding a validator to the Pydantic model.
+
+Test Cases:
+```python
+import pytest
+from fastapi.testclient import TestClient
+from main import app, Base, engine
+from sqlalchemy.orm import Session
+from sqlalchemy import create_engine
+
+@pytest.fixture(scope="module")
+def test_client():
+    # Create the database for testing
+    Base.metadata.create_all(bind=engine)
+    client = TestClient(app)
+    yield client
+    # Drop the database after tests
+    Base.metadata.drop_all(bind=engine)
+
+def test_register_user(test_client):
+    response = test_client.post("/api/register", json={"username": "testuser", "password": "testpass"})
+    assert response.status_code == 200
+    assert response.json() == {"message": "User registered successfully"}
+
+def test_register_duplicate_user(test_client):
+    response = test_client.post("/api/register", json={"username": "testuser", "password": "testpass"})
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Username already exists"}
+
+def test_login_user(test_client):
+    response = test_client.post("/api/login", json={"username": "testuser", "password": "testpass"})
+    assert response.status_code == 200
+    assert response.json() == {"message": "Login successful"}
+
+def test_login_invalid_user(test_client):
+    response = test_client.post("/api/login", json={"username": "invaliduser", "password": "wrongpass"})
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid credentials"}
+
+def test_log_expense(test_client):
+    # First, log in to get user_id
+    login_response = test_client.post("/api/login", json={"username": "testuser", "password": "testpass"})
+    user_id = login_response.json().get("userId")  # Assuming userId is returned
+
+    response = test_client.post("/api/expenses", json={"amount": 50.0, "description": "Test Expense", "user_id": user_id})
+    assert response.status_code == 200
+    assert response.json() == {"message": "Expense logged successfully"}
+
+def test_get_expenses(test_client):
+    # First, log in to get user_id
+    login_response = test_client.post("/api/login", json={"username": "testuser", "password": "testpass"})
+    user_id = login_response.json().get("userId")  # Assuming userId is returned
+
+    response = test_client.get(f"/api/expenses?user_id={user_id}")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)  # Should return a list of expenses
+```
