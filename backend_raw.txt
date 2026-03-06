@@ -1,0 +1,111 @@
+# main.py
+```python
+from fastapi import FastAPI, HTTPException, Depends
+from pydantic import BaseModel
+from sqlalchemy import create_engine, Column, Integer, String, Float
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.exc import IntegrityError
+from typing import List
+
+DATABASE_URL = "sqlite:///./test.db"
+
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+app = FastAPI()
+
+# User registration model
+class UserCreate(BaseModel):
+    username: str
+    password: str
+
+# User authentication model
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+# Expense model
+class ExpenseCreate(BaseModel):
+    amount: float
+    description: str
+
+class Expense(Base):
+    __tablename__ = "expenses"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer)
+    amount = Column(Float)
+    description = Column(String)
+
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    password = Column(String)
+
+Base.metadata.create_all(bind=engine)
+
+# Dependency to get the database session
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+@app.post("/api/register")
+async def register(user: UserCreate, db: Session = Depends(get_db)):
+    try:
+        db_user = User(username=user.username, password=user.password)
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+        return {"message": "User registered successfully"}
+    except IntegrityError:
+        raise HTTPException(status_code=400, detail="Username already exists")
+
+@app.post("/api/login")
+async def login(user: UserLogin, db: Session = Depends(get_db)):
+    db_user = db.query(User).filter(User.username == user.username, User.password == user.password).first()
+    if db_user:
+        return {"message": "Login successful"}
+    raise HTTPException(status_code=401, detail="Invalid credentials")
+
+@app.post("/api/expenses")
+async def log_expense(expense: ExpenseCreate, user_id: int, db: Session = Depends(get_db)):
+    try:
+        db_expense = Expense(user_id=user_id, amount=expense.amount, description=expense.description)
+        db.add(db_expense)
+        db.commit()
+        db.refresh(db_expense)
+        return {"message": "Expense logged successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/expenses", response_model=List[ExpenseCreate])
+async def get_expenses(user_id: int, db: Session = Depends(get_db)):
+    expenses = db.query(Expense).filter(Expense.user_id == user_id).all()
+    return expenses
+```
+
+# models.py  
+```python
+from sqlalchemy import Column, Integer, String, Float
+from sqlalchemy.ext.declarative import declarative_base
+
+Base = declarative_base()
+
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    password = Column(String)
+
+class Expense(Base):
+    __tablename__ = "expenses"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer)
+    amount = Column(Float)
+    description = Column(String)
+```
